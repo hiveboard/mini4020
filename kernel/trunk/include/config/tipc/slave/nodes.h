@@ -1,0 +1,1 @@
+#define CONFIG_TIPC_SLAVE_NODES 0

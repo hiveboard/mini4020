@@ -1,0 +1,1 @@
+#define CONFIG_FB_SEP4020_320_240 1

@@ -1,0 +1,76 @@
+######################################################################
+#	Module Name: Makefile
+#	Abstract: Makefile for rt73 linux driver on kernel series 2.4
+######################################################################
+
+
+CC := cc
+
+include ./config.mk
+
+WFLAGS := -Wall -Wstrict-prototypes -Wno-trigraphs
+CFLAGS := -D__KERNEL__ -I$(LINUX_SRC)/include -O2 -fomit-frame-pointer -fno-strict-aliasing -fno-common -pipe -mpreferred-stack-boundary=2 -march=i686 -DMODULE -DMODVERSIONS -include $(LINUX_SRC)/include/linux/modversions.h
+
+## Comment/uncomment the following line to enable/disable debugging
+#CFLAGS += -DDBG
+
+CFLAGS += $(WFLAGS)
+
+OBJ = rt73.o
+ 
+rt73.o: rtmp_main.o mlme.o connect.o rtusb_bulk.o rtusb_io.o sync.o assoc.o auth.o auth_rsp.o rtusb_data.o rtmp_init.o  sanity.o rtmp_wep.o rtmp_info.o rtmp_tkip.o wpa.o md5.o	   	
+	$(LD) -r $^ -o $@
+
+
+## NDDIR/ifcfg-rausb0
+ND_CONF=/etc/sysconfig/network-scripts/ifcfg-rausb0
+
+ifdef NDDIR
+	NDDIR := $(NDDIR)
+else
+ 	NDDIR := /etc/sysconfig/network-scripts
+endif
+
+ifdef MOD_CONF
+	MOD_CONF := $(MOD_CONF)	
+else
+	MOD_CONF := /etc/modules.conf 
+endif
+
+ifdef MODDIR
+ 	MOD_ROOT := $(MODDIR)
+else
+ 	MOD_ROOT := /lib/modules/$(shell uname -r)/extra
+endif
+
+
+all: $(OBJ)
+	@touch config.mk
+		
+clean:
+	rm -rf *.o *~ core .*.cmd *.ko *.mod.c .tmp_versions built-in.o
+
+install:
+	@touch config.mk
+	install -m 755 -o 0 -g 0 -d $(MOD_ROOT)
+	install -m 644 -o 0 -g 0 $(OBJ) $(MOD_ROOT)
+ 	
+	@echo "Network device directory $(NDDIR)"; 
+	@echo "Module configuration file $(MOD_CONF)";	
+	
+	@if [ -d "$(NDDIR)" ] ; then \
+		if [ ! -f "$(ND_CONF)" ]; then \
+			echo "Create 'ifcfg-rausb0' in $(NDDIR)/"; \
+			cp ifcfg-rausb0 $(NDDIR)/ ; \
+		fi; \
+ 	fi
+	
+	@if ! grep -q 'rausb0' $(MOD_CONF) ; then \
+		echo "append 'alias rausb0 rt73' to $(MOD_CONF)"; \
+		echo "alias rausb0 rt73" >> $(MOD_CONF) ; \
+ 	fi
+	/sbin/depmod -a
+
+config:
+	@touch config.mk
+	@./Configure

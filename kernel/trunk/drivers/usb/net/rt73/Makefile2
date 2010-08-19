@@ -1,0 +1,34 @@
+######################################################################
+#       Module Name: Makefile
+#       Abstract: Makefile for rt73 linux driver on kernel series 2.6 
+######################################################################
+CC := arm-linux-gcc
+
+WFLAGS := -Wall -Wstrict-prototypes -Wno-trigraphs
+CFLAGS += $(WFLAGS)
+ 
+obj-m := rt73.o
+ 
+rt73-objs :=  rtmp_main.o mlme.o connect.o rtusb_bulk.o rtusb_io.o sync.o assoc.o auth.o auth_rsp.o rtusb_data.o rtmp_init.o  sanity.o rtmp_wep.o rtmp_info.o rtmp_tkip.o wpa.o md5.o
+ 
+ND_CONF=/etc/sysconfig/network-scripts/ifcfg-rausb0
+ 
+ifdef NDDIR
+        NDDIR := $(NDDIR)
+else
+        NDDIR := /etc/sysconfig/network-scripts
+endif
+ 
+ifdef MOD_CONF
+        MOD_CONF := $(MOD_CONF)
+else
+        MOD_CONF := /etc/modprobe.conf
+endif
+#KDIR    := /home/at91sam9261ek/linux-2.6.20
+all: 
+	make -C $(KDIR) 'EXTRA_CFLAGS=-DRTMP_EMBEDDED -I.'  SUBDIRS=$(shell pwd) modules
+ 
+clean:
+        rm -rf *.o *~ .*.cmd *.ko *.mod.c .tmp_versions built-in.o
+        
+

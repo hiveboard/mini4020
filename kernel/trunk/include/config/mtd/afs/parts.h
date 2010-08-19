@@ -1,0 +1,1 @@
+#define CONFIG_MTD_AFS_PARTS 1

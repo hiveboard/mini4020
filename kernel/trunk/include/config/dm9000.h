@@ -1,0 +1,1 @@
+#define CONFIG_DM9000 1

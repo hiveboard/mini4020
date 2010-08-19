@@ -1,0 +1,1 @@
+#define CONFIG_SCTP_DBG_OBJCNT 1

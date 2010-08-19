@@ -1,0 +1,1 @@
+#define CONFIG_CPU_ABRT_LV4T 1

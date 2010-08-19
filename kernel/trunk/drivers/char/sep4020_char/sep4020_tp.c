@@ -1,0 +1,336 @@
+/* linux/drivers/char/sep4020_char/sep4020_tp.c
+ *
+* Copyright (c) 2009 prochip company
+*	http://www.prochip.com.cn
+*	leeming1203@gmail.com.cn
+*
+* sep4020 touchpad driver.
+*
+* Changelog:
+*	22-jan-2009 leeming	Initial version
+*	27-Apr-2009 leeming  	fixed	a lot
+ *
+ * 
+ *
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation; either version 2 of the License, or
+* (at your option) any later version.
+*/
+
+#include <linux/module.h>
+#include <linux/types.h>
+#include <linux/fs.h>
+#include <linux/errno.h>
+#include <linux/mm.h>
+#include <linux/sched.h>
+#include <linux/init.h>
+#include <linux/cdev.h>
+#include <linux/interrupt.h>
+#include <linux/time.h>
+#include <linux/spinlock_types.h>
+#include <linux/delay.h>
+
+#include <asm/types.h>
+#include <asm/system.h>
+#include <asm/uaccess.h>
+#include <asm/io.h>
+#include <asm/hardware.h>
+			
+
+#define TP_MAJOR        250 //主设备号 
+#define X_LOCATION_CMD  0x90 
+#define Y_LOCATION_CMD  0xd0 
+
+#define PEN_UP          0
+#define PEN_UNSURE      1 
+#define PEN_DOWN        2 
+
+#define PEN_TIMER_DELAY_JUDGE           2// judge whether the pendown message is a true pendown     jiffes
+#define PEN_TIMER_DELAY_LONGTOUCH       1// judge whether the pendown message is a long-time touch  jiffes
+
+#define CSL     *(volatile unsigned long*)GPIO_PORTA_DATA_V &= ~(0x1<<2) //cs 片选信号拉低
+#define CSH     *(volatile unsigned long*)GPIO_PORTA_DATA_V |= 0x1<<2		//cs 片选信号拉高
+
+#define CLKL    *(volatile unsigned long*)GPIO_PORTA_DATA_V &= ~(0x1<<1)	//时钟输入口线
+#define CLKH    *(volatile unsigned long*)GPIO_PORTA_DATA_V |= 0x1<<1
+
+#define DATAL   *(volatile unsigned long*)GPIO_PORTA_DATA_V &= ~(0x1<<4)	//命令输入口线
+#define DATAH   *(volatile unsigned long*)GPIO_PORTA_DATA_V |= 0x1<<4
+
+
+
+static int	s_tp_openflag = 0;
+static int	s_pen_status  = PEN_UP;
+
+struct tp_dev
+{
+    struct cdev cdev;
+    unsigned short zpix;
+    unsigned short xpix;
+    unsigned short ypix;
+    struct timer_list tp_timer;
+};
+
+struct tp_dev *tpdev;//触摸屏结构体
+
+
+
+
+ static unsigned short PenSPIXfer(unsigned short ADCommd)
+{
+    unsigned short data=0; 
+    int i=0;
+	
+    CSL;
+    udelay(10);	
+
+        //前8个节拍发送命令
+    for(i = 0; i < 8; i++)
+    {
+    CLKL;	
+    udelay(10);			
+    if(ADCommd & 0x80)	//从命令的最高位开始
+        {
+        DATAH;
+        }
+ 		else
+        {
+        DATAL;
+        }  	
+
+    CLKH;		
+    udelay(10);			
+    ADCommd <<= 1;		
+    }
+	
+    	//3个节拍以上的等待，保证控制命令的完成
+    udelay(50);		
+	
+        //12个节拍读取转换成数字信号的ad采样值
+    for(i=0;i<12;i++)
+        {
+    CLKL;
+    udelay(10);			
+    if(*(volatile unsigned long*)GPIO_PORTA_DATA_V & 0x08)	//判断数据输出位是否为1
+        {
+        data |= 0x1; 
+		}	
+    data <<= 1;		
+    CLKH;		
+    udelay(10);	
+        }
+	
+	//3个节拍以上的等待，保证最后一位数据的完成
+    udelay(50);	
+	
+    CSH;
+	
+    return data;    
+ 
+}
+
+
+
+static void sep4020_tp_setup(void)
+{
+
+    *(volatile unsigned long*)INTC_IMR_V |= 0x200; //extern int 8
+    *(volatile unsigned long*)INTC_IER_V |= 0x200;  
+   
+	   disable_irq(INTSRC_EXTINT8);
+    *(volatile unsigned long*)GPIO_PORTA_SEL_V |= 0x100;	                 //通用用途
+    *(volatile unsigned long*)GPIO_PORTA_DIR_V |= 0x100;                   //输入 
+
+    *(volatile unsigned long*)GPIO_PORTA_INTRCTL_V |= 0x30000;             //低电平触发
+    *(volatile unsigned long*)GPIO_PORTA_INCTL_V |= 0x100;                 //外部中断源输入
+
+    *(volatile unsigned long*)GPIO_PORTA_DIR_V 	|= 0x08;		//portD0 输入
+    *(volatile unsigned long*)GPIO_PORTA_DIR_V 	&= ~(0x16);	//prortD1, portD3, portD4输出
+    *(volatile unsigned long*)GPIO_PORTA_SEL_V	|= 0x1E;   	//0，1，3，4均设置为通用（普通io）
+
+
+	   mdelay(20);
+    printk("in the touchpad setup \n");
+    *(volatile unsigned long*)GPIO_PORTA_INTRCLR_V |= 0x100;                 
+    *(volatile unsigned long*)GPIO_PORTA_INTRCLR_V &= 0x000;                 //清除中断
+	
+    enable_irq(INTSRC_EXTINT8);
+
+} 
+
+
+static void tsevent(void)
+{
+
+    if (s_pen_status == PEN_DOWN) 
+        {
+        tpdev->xpix = PenSPIXfer(X_LOCATION_CMD);
+        tpdev->ypix = PenSPIXfer(Y_LOCATION_CMD);
+        tpdev->zpix = 0;  //0 means down;
+	    }
+    else if(s_pen_status == PEN_UP)
+        {
+        tpdev->zpix = 4; //4 means up;
+	    }
+}
+
+
+
+static void tp_timer_handler(unsigned long arg)
+{
+    int penflag = 0;
+    penflag = *(volatile unsigned long*)GPIO_PORTA_DATA_V;	//读取中断口数值
+
+    if((penflag & 0x100) == 0)//如果第九位是低电平，表示触摸屏仍然被按着
+        {
+        if(s_pen_status == PEN_UNSURE )
+                         s_pen_status = PEN_DOWN;
+
+        tpdev->tp_timer.expires = jiffies + PEN_TIMER_DELAY_LONGTOUCH;
+        tsevent();      //读取触摸屏坐标
+        add_timer(&tpdev->tp_timer);
+		
+        }
+    else
+        {
+        del_timer_sync(&tpdev->tp_timer);//在定时器到期前禁止一个已注册的定时器
+        s_pen_status = PEN_UP;
+        tsevent();
+        *(volatile unsigned long*)GPIO_PORTA_INTRCLR_V |= 0x100;                 
+        *(volatile unsigned long*)GPIO_PORTA_INTRCLR_V &= 0x000;                 //清除中断
+        enable_irq(INTSRC_EXTINT8);
+        }	
+
+}
+
+
+
+static int sep4020_tp_irqhandler(int irq, void *dev_id, struct pt_regs *regs)
+{ 
+
+    disable_irq(INTSRC_EXTINT8); 
+
+    s_pen_status = PEN_UNSURE;
+
+    tpdev->tp_timer.expires = jiffies + PEN_TIMER_DELAY_JUDGE;
+    add_timer(&tpdev->tp_timer);
+
+    *(volatile unsigned long*)GPIO_PORTA_INTRCLR_V |= 0x100;                 
+    *(volatile unsigned long*)GPIO_PORTA_INTRCLR_V &= 0x0;                 //清除中断  
+
+    //we will turn on the irq in the timer_handler
+    return IRQ_HANDLED;
+}
+
+
+
+static int sep4020_tp_open(struct inode *inode, struct file *filp)
+{
+	
+    if( s_tp_openflag )
+    		    return -EBUSY;
+    s_tp_openflag = 1;
+
+    tpdev->zpix = 4;//4 means up
+    tpdev->xpix = 0;
+    tpdev->ypix = 0;
+    s_pen_status  = PEN_UP;
+
+    sep4020_tp_setup();
+    return 0;
+}
+
+static int sep4020_tp_release(struct inode *inode, struct file *filp)
+{
+    s_tp_openflag = 0;
+    return 0;
+}
+
+static ssize_t sep4020_tp_read(struct file *filp, char __user *buf, size_t size, loff_t *ppos)
+{
+    unsigned short a[3] = {0};
+    a[0] = tpdev->zpix;
+    a[1] = tpdev->xpix;
+    a[2] = tpdev->ypix;    
+	//printk("*************in the kernel xpix is %d,ypix is %d, zpix is %d************\r\n",tpdev->xpix,tpdev->ypix,tpdev->zpix);
+    copy_to_user(buf, a, sizeof(a));
+    return 0;
+}
+
+
+
+static  struct file_operations sep4020_tp_fops = 
+{
+	.owner = THIS_MODULE,
+	.read  = sep4020_tp_read,
+	.open  = sep4020_tp_open,
+	.release = sep4020_tp_release,
+};
+
+static int __init sep4020_tp_init(void)
+{ 
+    int err,result;
+
+    dev_t devno = MKDEV(TP_MAJOR, 0);
+
+#ifdef TP_MAJOR
+		result = register_chrdev_region(devno, 1, "sep4020_tp");//向系统静态申请设备号
+#else 
+		result = alloc_chrdev_region(&devno, 0, 1, "sep4020_tp");//向系统动态申请设备号		
+#endif
+
+    if(result < 0)
+        return result;
+	
+    tpdev = kmalloc(sizeof(struct tp_dev),GFP_KERNEL);
+    if (!tpdev)
+    	{
+        result = -ENOMEM;
+        unregister_chrdev_region(devno,1);
+        return result;
+        }
+    memset(tpdev,0,sizeof(struct tp_dev));
+	 tpdev->zpix = 4;//4 means up
+
+    //add a irqhandler
+    if(request_irq(INTSRC_EXTINT8,sep4020_tp_irqhandler,SA_INTERRUPT,"sep4020_tp",NULL))	
+        {
+        printk("request tp irq8 failed!\n");
+        unregister_chrdev_region(devno,1);
+        kfree(tpdev);
+        return -1;			
+        }
+	
+    //init the tpdev device struct
+    cdev_init(&tpdev->cdev, &sep4020_tp_fops);
+    tpdev->cdev.owner = THIS_MODULE;
+    //just init the timer, not add to the kernel now
+    setup_timer(&tpdev->tp_timer,tp_timer_handler,0);
+
+         //向系统注册该字符设备
+    err = cdev_add(&tpdev->cdev, devno, 1);
+    if(err)
+        {
+        printk("adding err\r\n");
+        unregister_chrdev_region(devno,1);
+        kfree(tpdev);
+        free_irq(INTSRC_EXTINT8,NULL);
+        return err;
+        }  
+    return 0;
+}
+
+static void __exit sep4020_tp_exit(void)
+{
+	cdev_del(&tpdev->cdev);
+	kfree(tpdev);
+	free_irq(INTSRC_EXTINT8,NULL);
+	unregister_chrdev_region(MKDEV(TP_MAJOR, 0),1);
+}
+
+module_init(sep4020_tp_init);
+module_exit(sep4020_tp_exit);
+
+MODULE_AUTHOR("Leeming Zhang");
+MODULE_LICENSE("GPL");

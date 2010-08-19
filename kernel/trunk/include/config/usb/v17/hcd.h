@@ -1,0 +1,1 @@
+#define CONFIG_USB_V17_HCD 1

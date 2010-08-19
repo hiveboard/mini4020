@@ -1,0 +1,1 @@
+#define CONFIG_SEP4020_CHAR 1

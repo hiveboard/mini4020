@@ -1,0 +1,1 @@
+#define CONFIG_CPU_COPY_V4WT 1

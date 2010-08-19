@@ -1,0 +1,13 @@
+if ARCH_SEP4020
+
+menu "SEP4020 Implementations"
+
+config ARCH_4020
+	bool "GFD4020"
+	help
+	  Say Y if you intend to run the kernel on the GFD4020
+	  board. This board is based on a  SEP4020.
+
+endmenu
+
+endif

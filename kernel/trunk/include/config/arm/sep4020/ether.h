@@ -1,0 +1,1 @@
+#define CONFIG_ARM_SEP4020_ETHER 1

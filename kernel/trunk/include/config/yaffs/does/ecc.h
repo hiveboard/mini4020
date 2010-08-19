@@ -1,0 +1,1 @@
+#define CONFIG_YAFFS_DOES_ECC 1

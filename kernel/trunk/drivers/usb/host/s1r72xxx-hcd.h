@@ -1,0 +1,376 @@
+/**
+ * @file	s1r72xxx-hcd.h
+ * @brief	S1R72xxx USB Host Controller Header
+ * @date	2007/04/16
+ * @author	Luxun9 project team
+ * Copyright (C)SEIKO EPSON CORPORATION. 2006-2007 All rights reserved.
+ * This file is licensed under GPLv2.
+ */
+
+#ifndef __S1R72XXX_HCD_H__
+#define __S1R72XXX_HCD_H__
+
+//#include <linux/usb.h>
+
+static void* s_r_ioaddr;
+
+/**
+ * @name	_REGS
+ * @brief	port access MACRO
+ */
+/*@{*/
+#define S_R_REGS8(x)	*(volatile unsigned char*)(s_r_ioaddr + (x))
+#define S_R_REGS16(x)   *(volatile unsigned short*)((unsigned char*)(s_r_ioaddr + (x)))
+#define S_R_REGS32(x)   *(volatile unsigned long*)(s_r_ioaddr + (x))
+/*@}*/
+
+/**
+ * @name	DEBUG
+ * @brief	for debug
+ */
+/*@{*/
+//#define DEBUG_PROC
+//#define DEBUG_PROC_LOG
+//#define S_R_SUSPEND_TEST
+//#define S_R_USB_DEBUG
+
+#ifdef S_R_USB_DEBUG
+#define DBG_LEVEL DBG_ALL
+//#define DBG_LEVEL DBG_NONE
+#define DPRINT(x, args...)\
+	if (DBG_LEVEL == DBG_ALL){printk(args);\
+	}else{ if ((x)&DBG_LEVEL){printk(args);}}
+#else
+#define DPRINT(x, args...)
+#endif
+
+#ifdef DEBUG_PROC
+#define D_QUEUE_INC(x)	queue_seq_no++;x->count = queue_seq_no;
+#define D_COUNT		unsigned long count;
+#else
+#define D_QUEUE_INC(x)
+#define D_COUNT
+#endif
+
+#define DBG_NONE 0
+#define DBG_INIT 1
+#define DBG_IRQ (DBG_INIT << 1)
+#define DBG_API (DBG_IRQ << 1)
+#define DBG_OUT (DBG_API << 1)
+#define DBG_IN (DBG_OUT << 1)
+#define DBG_DUMP (DBG_OUT << 1)
+#define DBG_ERROR (DBG_DUMP << 1)
+#define DBG_ALL (DBG_ERROR << 1)
+#define DBG_DATA (DBG_IN | DBG_OUT | DBG_IRQ)
+#define DBG_HUB_STATUS (DBG_ALL << 1)
+
+enum S_R_DEBUG_ITEM {
+	S_R_DEBUG_QUEUE = 0,
+	S_R_DEBUG_DEQUEUE,
+	S_R_DEBUG_RESET,
+	S_R_DEBUG_START,
+	S_R_DEBUG_SUSPEND,
+	S_R_DEBUG_RESUME,
+	S_R_DEBUG_SYS_SUSPEND,
+	S_R_DEBUG_SYS_RESUME,
+	S_R_DEBUG_STOP,
+	S_R_DEBUG_EP_DISABLE,
+	S_R_DEBUG_HUB_CONT,
+	S_R_DEBUG_IRQ,
+	S_R_DEBUG_REGISTER,
+	S_R_DEBUG_SUBMIT,
+	S_R_DEBUG_OUT,
+	S_R_DEBUG_IN,
+	S_R_DEBUG_COMP,
+	S_R_DEBUG_ERROR,
+	S_R_DEBUG_OTHERS,
+	S_R_DEBUG_MAX
+};
+/*@}*/
+
+/**
+ * @struct	tag_S_R_HCD_QUEUE_DEBUG
+ * @brief	struct for debug
+ */
+typedef struct tag_S_R_HCD_QUEUE_DEBUG {
+	unsigned char	func_name;
+	unsigned int	data1;
+	unsigned int	data2;
+} S_R_HCD_QUEUE_DEBUG;
+
+/**
+ * @struct	tag_S_R_HCD_QUEUE_TITLE
+ * @brief	struct for debug info.
+ */
+typedef struct tag_S_R_HCD_QUEUE_DEBUG_TITLE {
+	unsigned char	*action_string;
+	unsigned char	*target_string;
+	unsigned char	*value_string;
+} S_R_HCD_QUEUE_DEBUG_TITLE;
+
+
+#define S_R_REG_CLEAR		0
+
+/**
+ * @name	CH_
+ * @brief	define channel
+ */
+enum {
+	CH_NONE	= -1,
+	CH_0    = 0,
+	CH_A,
+	CH_B,
+	CH_C,
+	CH_D,
+	CH_E,
+	CH_MAX
+};
+
+/**
+ * @name	CTRL_
+ * @brief	status for CTRL Transfer
+ */
+enum {
+	CTRL_IDLE = 0,
+	CTRL_SETUP,
+	CTRL_DATAIN,
+	CTRL_DATAOUT,
+	CTRL_STATUSIN,
+	CTRL_STATUSOUT
+};
+unsigned char   automode_cmp_tbl[GoRESUMEtoOP + 2];
+/**
+ * @name	AUTO_CMP
+ * @brief	complete changing state
+ */
+enum {
+	AUTO_NOT_USED,
+	AUTO_DISABLED_CMP,
+	AUTO_SUSPEND_CMP,
+	AUTO_RESUME_CMP,
+	AUTO_RESET_CMP
+};
+
+/**
+ * @name	_TEST_MODE_
+ * @brief	definitions of test mode
+ */
+/*@{*/
+#define S_R_TEST_MODE_NONE		0
+#define S_R_TEST_MODE_J			1
+#define S_R_TEST_MODE_K			2
+#define S_R_TEST_MODE_SE0_NAK		3
+#define S_R_TEST_MODE_PACKET		4
+#define S_R_TEST_MODE_FORCE_ENABLE	5
+
+#define TEST_MODE_PACKET_SIZE           53              /** Test mode packet size */
+/*@}*/
+
+/**
+ * @struct	virt_root_hub
+ * @brief	Struct for virtual root hub:
+ */
+struct virt_root_hub {
+	struct usb_device*	dev;
+	int			devnum;		/* device address for hub */
+	struct urb		*urb;		/* current urb under int */
+	int			send;		/* enable flag under int */
+	int			interval;	/* inetrval timer for int */
+	int			numports;	/* supported number */
+	struct timer_list	rh_int_timer;	/* timer for int */
+	unsigned short		wPortTrigger;
+	unsigned short		wPortTriggerAccepted;
+	struct usb_port_status	port_status;	
+	struct usb_hub_status	hub_status;
+};
+
+/**
+ * @name	ROOT_
+ * @brief	virtual root hub
+ */
+/*@{*/
+#define ROOT_HUB_PORT_NO		1
+#define RH_CHANGED_PORT_NO(x)		(1 << (x))
+#define RH_CHANGED_PORT_NOTHING		0
+
+#define RH_PORT_STATUS_STAYED		0
+#define RH_PORT_STATUS_CHANGED		1
+/*@}*/
+
+/**
+ * @struct	tag_S_R_HCD_QUEUE
+ * @brief	Struct for data queue:
+ */
+typedef struct tag_S_R_HCD_QUEUE {
+	struct usb_host_endpoint	*ep;	/* endpoint informations */
+	struct urb*			urb;
+	struct list_head		urb_list;
+	int	data_length;
+	unsigned char			ctrl_status;/* control transaction status */
+	D_COUNT;
+} S_R_HCD_QUEUE;
+
+/**
+ * @struct	tag_S_R_HC_CH
+ * @brief	Struct for CH:
+ */
+typedef struct tag_S_R_HC_CH {
+	unsigned int	ch_no;		/* CH number */
+	unsigned char	tran_type;	/* supported transfer at this CH */
+	unsigned char	dir;		/* IN or OUT */
+	unsigned int	fifo_size;	/* FIFO size */
+	int			status;		/* active or not */
+	struct list_head	urb_list;	/* queue list */
+	struct usb_host_endpoint	*ep;	/* endpoint informations */
+	unsigned char	dev_addr;	/* endpoint address */
+	unsigned char	ep_no;		/* endpoint number */
+	unsigned char	hub_addr;	/* hub address */
+	unsigned char	port_no;	/* hub port number */
+	unsigned int	actual_size;	/* max write/read size */
+	unsigned char	is_short;	/* short packet or not */
+	unsigned char	cur_tran_type;	/* current transfer type */
+	unsigned char	queue_set;		/* queue is set */
+	u32	CHxIntStat;
+	u32	CHxIntEnb;
+	u32	CHxConfig_0;
+	u32	CHxConfig_1;
+	u32	CHxMaxPktSize;
+	u32	CHxTotalSize_H;
+	u32	CHxTotalSize_L;
+	u32	CHxHubAdrs;
+	u32	CHxFuncAdrs;
+	u32	CTL_SUP_CONT;
+	u32	BO_SUP_CONT;
+	u32	CSW_RCV_DAT_SIZE;
+	u32	CHxInterval;
+	u32	OUT_EP_CONT;
+	u32	IN_EP_CONT;
+	u32	CHxCondCode;
+	u32	CHxJoin;
+} S_R_HC_CH;
+
+/**
+ * @name	HW_
+ * @brief	state of host device
+ */
+enum S_R_HCD_STATE {
+	S_R_HW_PROBE = 0,
+	S_R_HW_SLEEP,
+	S_R_HW_ACT_HOST
+};
+
+#define S_R_CH_ST_IDLE		0			/* this CH is free */
+#define S_R_CH_ST_ACTIVE	1			/* this CH is active */
+#define S_R_CH_DIR_UNKNOWN	0			/* dir unknown */
+#define S_R_CH_DIR_IN		1			/* dir IN */
+#define S_R_CH_DIR_OUT		2			/* dir OUT */
+#define S_R_CH_TGL_IN		0			/* dir OUT */
+#define S_R_CH_TGL_OUT		1			/* dir OUT */
+
+#define S_R_CH_OFFSET(x)	((x) << 4)		/* CH register offset */
+#define S_R_USB_ADDR_MASK	0x0F			/* USB Address mask */
+
+//#define S_R_HUB_ADDR_OFFSET(x)	((x) << 4)/* hub register bit offset */
+#define S_R_CH_TOTALSIZE_H(x)\
+	(unsigned short)(((x) & 0xFFFF0000) >> 16)	/* TotalSizeH */
+#define S_R_CH_TOTALSIZE_L(x)\
+	(unsigned short)((x) & 0x0000FFFF)		/* TotalSizeL */
+
+#define S_R_SETUP_PACKET_LEN			8
+
+/**
+ * @name	local define
+ * @brief	local parameters
+ */
+/*@{*/
+/* RdRemain check loop counter */
+#define S_R_RD_REMAIN_TIMEOUT			254
+
+/* PM_Control time out counter for remove API */
+#define S_R_FINISHED_PM_TIMEOUT			0xF000
+
+/* Port Err reset counter. longer than 60MHz x 3 times */
+#define S_R_GO_DISABLED_TIMEOUT			0x80
+#define S_R_PORT_ERR_RESET_TIMEOUT		0x02
+
+/* Over current timer */
+#define S1R72_OVER_CURRENT_TIMEOUT		(jiffies + msecs_to_jiffies(100))
+#define S1R72_OVER_CURRENT_TIMER_IDLE		0
+#define S1R72_OVER_CURRENT_TIMER_ACT		1
+
+
+/* get CH number from CHrIntStat */
+#define GET_CHR_NUM(x, y)			((x) & (1 << (y - 1)))
+#define SET_CHR_NUM(x)				(1 << (x - 1))
+
+/* urb data complete flag */
+#define S_R_CH_ALLDATA_CMP			0
+#define S_R_CH_DATA_REMAIN			1
+
+/* last recieved data is short packet or not */
+#define S_R_CH_LAST_ISNOT_SHORT			0
+#define S_R_CH_LAST_IS_SHORT			1
+
+/* port_control function command */
+#define S_R_PORT_CNT_REG_WRITE			0
+#define S_R_PORT_CNT_REG_READ			1
+#define S_R_PORT_CNT_POW_OFF			2
+#define S_R_PORT_CNT_AUTO_CANCEL		3
+#define S_R_PORT_CNT_POW_OFF_WAIT		20
+#define S_R_PORT_CNT_AUTO_CANCEL_WAIT		20
+/*@}*/
+
+/**
+ * @struct	hcd_priv
+ * @brief	Struct for private:
+ */
+struct hcd_priv {
+	struct usb_bus			*bus;
+	struct virt_root_hub		rh;
+	spinlock_t			lock;
+	S_R_HC_CH			ch_info[CH_MAX];	/* CH list */
+	unsigned char	 		called_state;		/* API or IRQ */
+	unsigned char			hw_state;		/* H/W power state */
+	struct timer_list 		oc_timer;		/* Over Current timer */
+	unsigned char	 		oc_timer_state;		/* Over Current timer */
+	struct pt_regs			*pregs;
+	void				*ioaddr;
+	unsigned char		automode_flag;
+#ifdef CONFIG_PCI
+	u64			pcimem_start;
+	u64			pcimem_len;
+#endif
+};
+
+#define S_R_CALLED_FROM_API	0
+#define S_R_CALLED_FROM_OTH	1
+
+#define S_R_QUEUE_ISNOT_SET	0
+#define S_R_QUEUE_IS_SET	1
+
+/**
+ * @struct	tag_S_R_CH_INFTBL
+ * @brief	CH informatins structure
+ */
+typedef struct tag_S_R_CH_INFTBL {
+	unsigned char		tran_type;
+	unsigned int		fifo_size;
+} S_R_CH_INFTBL;
+
+/**
+ * @name	_CH_TR_
+ * @brief	supported transfer type
+ */
+/*@{*/
+#define S_R_CH_TR_NONE		(0x00)
+#define S_R_CH_TR_CONTROL	(0x01)		/* support control */
+#define S_R_CH_TR_ISOC \
+		(S_R_CH_TR_CONTROL << 1) 	/* support isochronout */
+#define S_R_CH_TR_BULK		(S_R_CH_TR_ISOC << 1)		/* support bulk */
+#define S_R_CH_TR_INT		(S_R_CH_TR_BULK << 1)		/* support interrupt */
+#define S_R_CH_TR_FULL	\
+	(S_R_CH_TR_ISOC|S_R_CH_TR_BULK|S_R_CH_TR_INT)	/* support all transfer */
+/*@}*/
+
+#endif  /* __S1R72XXX_HCD_H__ */
+

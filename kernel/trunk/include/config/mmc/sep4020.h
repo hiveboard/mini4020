@@ -1,0 +1,1 @@
+#define CONFIG_MMC_SEP4020 1

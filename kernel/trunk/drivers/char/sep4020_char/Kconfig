@@ -1,0 +1,37 @@
+if SEP4020_CHAR
+menu "sep4020 char device"
+
+config SEP4020_PWM
+	tristate "sep4020 pwm driver"
+	default y
+
+config SEP4020_PSAM
+	tristate "sep4020 psam card driver"
+	default y
+
+config SEP4020_KEY
+	tristate "sep4020 key driver"
+	default y
+
+config SEP4020_LED
+	tristate "sep4020 led driver"
+	
+config SEP4020_RTC
+	tristate "sep4020 rtc driver"
+	
+config SEP4020_TP
+	tristate "sep4020 touchpad driver"
+	default y
+	
+config SEP4020_PRINTER
+	tristate "sep4020 Thermal printer driver (for special board!)"
+
+config SEP4020_PRINTER2
+	tristate "sep4020 Dot-Matrix Printer driver (for special board!)"
+
+config SEP4020_MGCD
+	tristate "sep4020_MGCD driver(for special board!)"
+
+endmenu
+
+endif

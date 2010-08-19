@@ -1,0 +1,1 @@
+#define CONFIG_MTD_NAND_SEP4020 1
