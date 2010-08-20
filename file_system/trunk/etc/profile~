@@ -1,0 +1,49 @@
+#Set search library path
+#echo "Set search library path..........."
+export LD_LIBRARY_PATH=/lib:/usr/lib:/usr/local/lib:$LD_LIBRARY_PATH
+
+#Set user path
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin:$PATH
+
+mknod /dev/ttyp5 		c 3 5
+mknod /dev/ptyp5 		c 2 5
+mknod /dev/tp 			c 250 0
+mknod /dev/flowled 		c 253 0
+mknod /dev/mg_card 	c 255 0
+mknod /dev/key 		c  254 0
+mknod /dev/sep4020_gpio c  240 0
+mknod /dev/printer 	c 249 0
+mknod /dev/psam 		c 252 0
+mknod /dev/cmx865 	c 251 0
+mknod /dev/sep4020_pwm	c 245 0
+
+export T_ROOT=/
+export LD_LIBRARY_PATH=/lib 
+export TSLIB_CONSOLEDEVICE=none  
+export TSLIB_TSDEVICE=/dev/tp
+export TSLIB_CALIBFILE=/etc/pointercal     
+export TSLIB_CONFFILE=/etc/ts.conf   
+export TSLIB_PLUGINDIR=/plugins 
+
+hwclock -s
+
+insmod 	/drivers/sep4020_led.ko
+insmod 	/drivers/sep4020_tp.ko 
+insmod 	/drivers/sep4020_key.ko 
+insmod 	/drivers/sep4020_pwm.ko
+insmod 	/drivers/sep4020_psam.ko
+
+mount -t yaffs /dev/mtdblock2 /var/Mini4020/Mp3
+mount -t vfat -o sync /dev/mmcblk0p1 /mnt/sd/
+mount /dev/uba1 /mnt/usb
+cp -ar Mini4020/mini/res/ /tmp/
+cp -ar Mini4020/mini/sdres/ /tmp/
+cp /Mini4020/Mp3/prisonbreak.mp3 /tmp/
+cp /Mini4020/Mp3/madplay.arm /tmp/
+cp /Mini4020/mini/mini /tmp/
+cp -ar Mini4020/mini/pwm/ /tmp/
+cd /tmp
+./mini
+
+

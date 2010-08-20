@@ -1,0 +1,49 @@
+#Set search library path
+#echo "Set search library path..........."
+export LD_LIBRARY_PATH=/lib:/usr/lib:/usr/local/lib:$LD_LIBRARY_PATH
+
+#Set user path
+
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin:$PATH
+
+mknod /dev/ttyp5 c 3 5
+mknod /dev/ptyp5 c 2 5
+#mknod /dev/buttons c 254 0
+mknod /dev/tp c 250 0
+mknod /dev/led c 253 0
+mknod /dev/mg_card c 255 0
+mknod /dev/key c  254 0
+mknod /dev/sep4020_gpio c  240 0
+mknod /dev/printer c 249 0
+mknod /dev/psam c 252 0
+mknod /dev/cmx865 c 251 0
+
+export T_ROOT=/
+export LD_LIBRARY_PATH=/lib 
+export TSLIB_CONSOLEDEVICE=none  
+export TSLIB_TSDEVICE=/dev/tp
+export TSLIB_CALIBFILE=/etc/pointercal     
+export TSLIB_CONFFILE=/etc/ts.conf   
+export TSLIB_PLUGINDIR=/plugins 
+
+insmod /drivers/sep4020_cmx865.ko
+insmod /drivers/sep4020_key.ko 
+#insmod /drivers/sep4020_vkey.ko 
+#insmod /drivers/sep4020_gpio.ko 
+insmod /drivers/sep4020_mgcard.ko 
+insmod /drivers/thermal_printer.ko 
+#insmod /drivers/sep4020_psam.ko
+
+ifconfig eth0 192.168.0.2
+hwclock -s
+#/EPOS/GPRS/sim&
+cd /menu/epos
+cp printer_test /tmp
+cp arm_pos /tmp
+cd /tmp
+./printer_test&
+./arm_pos 
+
+hwclock -s
+
+

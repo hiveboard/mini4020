@@ -1,0 +1,31 @@
+
+
+ESRAM 0x04000000 
+{
+    ESRAM 0x04000000 
+    {
+    	boot_gfd.o (BOOT, +First)
+    	        
+	}
+
+}
+
+
+
+SDram 0x30002000 
+{
+    SDram 0x30002000 
+    {
+    	;boot_gfd.o (BOOT, +First)
+    	;int_gfd.o (INT, +First)
+        * (+RO,+RW,+ZI)
+     }  
+     
+     
+     
+ 	O 0x0000000 
+    {
+    	int_gfd.o (INT, +First)
+    }    
+}
+
